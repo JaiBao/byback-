@@ -41,6 +41,10 @@ const schema = new Schema(
       type: Date,
       required: [true, '缺少送達日期']
     },
+    deliveryTime: {
+      type: String,
+      required: [true, '缺少送達時間']
+    },
     phone: {
       type: String,
       required: [true, '缺少手機']

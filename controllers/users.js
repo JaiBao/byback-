@@ -22,18 +22,13 @@ export const register = async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10)
     const uid = uuidv4()
-    await pool.query('INSERT INTO users (account, password, email, role, name, address, company_name, tax_id, phone_number, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
-      account,
-      hashedPassword,
-      email,
-      role,
-      name,
-      address,
-      companyName,
-      taxId,
-      phoneNumber,
-      uid
-    ])
+    const registrationDate = new Date()
+
+    await pool.query(
+      'INSERT INTO users (account, password, email, role, name, address, company_name, tax_id, phone_number, uid, registration_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [account, hashedPassword, email, role, name, address, companyName, taxId, phoneNumber, uid, registrationDate]
+    )
+
     res.status(200).json({ success: true, message: '註冊成功' })
   } catch (error) {
     console.error('Register error:', error)

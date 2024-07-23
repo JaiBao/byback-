@@ -1,5 +1,4 @@
 // controllers/orders.js
-import { v4 as uuidv4 } from 'uuid'
 import { io } from '../index.js'
 import moment from 'moment'
 
@@ -18,30 +17,33 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: '包含下架商品' })
     }
 
-    const { deliveryDate, phone, landline, companyName, taxId, recipientName, recipientPhone, uid, comment, address } = req.body
+    const { deliveryDate, deliveryTime, phone, landline, companyName, taxId, recipientName, recipientPhone, uid, comment, address } = req.body
 
-    if (!deliveryDate) {
-      return res.status(400).json({ success: false, message: '送達日期是必需的' })
+    if (!deliveryDate || !deliveryTime) {
+      return res.status(400).json({ success: false, message: '送達日期和時間是必需的' })
     }
 
-    const oid = uuidv4()
+    const now = moment()
+    const year = now.format('YY')
+    const month = now.format('MM')
+    const [orderCountResult] = await pool.query('SELECT COUNT(*) as orderCount FROM orders WHERE DATE_FORMAT(date, "%Y-%m") = ?', [`${now.format('YYYY-MM')}`])
+    const orderCount = orderCountResult[0].orderCount + 1
+    const oid = `${year}${month}${orderCount.toString().padStart(5, '0')}`
+
     const [result] = await pool.query(
-      'INSERT INTO orders (user_id, date, delivery_date, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, uid, oid, status, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [req.user.id, new Date(), deliveryDate, phone, landline, companyName, taxId, address, recipientName, recipientPhone, uid, oid, '未確認', comment]
+      'INSERT INTO orders (user_id, date, delivery_date, delivery_time, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, uid, oid, status, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [req.user.id, new Date(), deliveryDate, deliveryTime, phone, landline, companyName, taxId, address, recipientName, recipientPhone, uid, oid, '未確認', comment]
     )
     const orderId = result.insertId
 
     for (const item of userCart) {
-      const productId = parseInt(item.product_name) // Convert product_name to number
+      const productId = parseInt(item.product_name)
       const product = products.find(p => p.id === productId)
       if (!product) {
         console.error(`Product not found for id: ${productId}`)
         return res.status(500).json({ success: false, message: `商品 ID ${productId} 未找到` })
       }
       const totalPrice = item.quantity * product.price
-      console.log(
-        `Attempting to insert product: order_id=${orderId}, product_name=${item.product_name}, quantity=${item.quantity}, total_price=${totalPrice}, status=未確認`
-      )
       await pool.query('INSERT INTO order_products (order_id, product_name, quantity, total_price, status) VALUES (?, ?, ?, ?, ?)', [
         orderId,
         item.product_name,
@@ -318,10 +320,10 @@ export const getAllOrders = async (req, res) => {
     }
 
     if (orderNumber) {
-      query += ' AND o.oid = ?'
-      countQuery += ' AND o.oid = ?'
-      queryParams.push(orderNumber)
-      countParams.push(orderNumber)
+      query += ' AND o.oid LIKE ?'
+      countQuery += ' AND o.oid LIKE ?'
+      queryParams.push(`%${orderNumber}%`)
+      countParams.push(`%${orderNumber}%`)
     }
 
     query +=
