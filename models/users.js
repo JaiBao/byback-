@@ -69,6 +69,15 @@ const schema = new Schema(
         message: '手機號碼格式錯誤'
       }
     },
+    gender: {
+      type: String,
+      enum: ['male', 'female'],
+      required: [true, '缺少性別']
+    },
+    birthdate: {
+      type: Date,
+      required: [true, '缺少出生日期']
+    },
     uid: {
       type: String,
       default: uuidv4

@@ -283,7 +283,7 @@ export const getAllOrders = async (req, res) => {
 
     if (role === 2) {
       query = `
-        SELECT o.*, u.account as user_account, u.name, u.phone_number
+        SELECT o.*, u.account as user_account, u.name, u.phone_number, u.birthdate, u.gender
         FROM orders o
         LEFT JOIN users u ON o.user_id = u.id
         WHERE 1=1
@@ -296,7 +296,7 @@ export const getAllOrders = async (req, res) => {
       `
     } else if (role === 1) {
       query = `
-        SELECT DISTINCT o.*, u.account as user_account, u.name, u.phone_number
+        SELECT DISTINCT o.*, u.account as user_account, u.name, u.phone_number, u.birthdate, u.gender
         FROM orders o
         JOIN order_products op ON o.id = op.order_id
         JOIN products p ON op.product_name = p.id
@@ -386,7 +386,9 @@ export const getAllOrders = async (req, res) => {
       companyName: order.company_name,
       userAccount: order.user_account || '未知用戶',
       name: order.name,
-      phoneNumber: order.phone_number
+      phoneNumber: order.phone_number,
+      birthdate: order.birthdate,
+      gender: order.gender
     }))
 
     const totalOrders = countResult[0].count

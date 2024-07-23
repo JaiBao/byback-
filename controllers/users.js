@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid'
 export const register = async (req, res) => {
   const pool = req.pool
   try {
-    const { account, password, email, role = 0, name, address, companyName = null, taxId = null, phoneNumber } = req.body
+    const { account, password, email, role = 0, name, address, companyName = null, taxId = null, phoneNumber, gender, birthdate } = req.body
 
     // 檢查手機號碼是否已經被註冊
     const [existingPhone] = await pool.query('SELECT id FROM users WHERE phone_number = ?', [phoneNumber])
@@ -25,8 +25,8 @@ export const register = async (req, res) => {
     const registrationDate = new Date()
 
     await pool.query(
-      'INSERT INTO users (account, password, email, role, name, address, company_name, tax_id, phone_number, uid, registration_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [account, hashedPassword, email, role, name, address, companyName, taxId, phoneNumber, uid, registrationDate]
+      'INSERT INTO users (account, password, email, role, name, address, company_name, tax_id, phone_number, uid, registration_date, gender, birthdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [account, hashedPassword, email, role, name, address, companyName, taxId, phoneNumber, uid, registrationDate, gender, birthdate]
     )
 
     res.status(200).json({ success: true, message: '註冊成功' })
