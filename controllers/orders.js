@@ -17,10 +17,10 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: '包含下架商品' })
     }
 
-    const { deliveryDate, deliveryTime, phone, landline, companyName, taxId, recipientName, recipientPhone, uid, comment, address } = req.body
+    const { deliveryDate, deliveryTime, phone, landline, companyName, taxId, recipientName, recipientPhone, uid, comment, address, paymentMethod } = req.body
 
-    if (!deliveryDate || !deliveryTime) {
-      return res.status(400).json({ success: false, message: '送達日期和時間是必需的' })
+    if (!deliveryDate || !deliveryTime || !paymentMethod) {
+      return res.status(400).json({ success: false, message: '送達日期、送達時間和付款方式是必需的' })
     }
 
     const now = moment()
@@ -31,8 +31,25 @@ export const createOrder = async (req, res) => {
     const oid = `${year}${month}${orderCount.toString().padStart(5, '0')}`
 
     const [result] = await pool.query(
-      'INSERT INTO orders (user_id, date, delivery_date, delivery_time, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, uid, oid, status, comment) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [req.user.id, new Date(), deliveryDate, deliveryTime, phone, landline, companyName, taxId, address, recipientName, recipientPhone, uid, oid, '未確認', comment]
+      'INSERT INTO orders (user_id, date, delivery_date, delivery_time, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, uid, oid, status, comment, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [
+        req.user.id,
+        new Date(),
+        deliveryDate,
+        deliveryTime,
+        phone,
+        landline,
+        companyName,
+        taxId,
+        address,
+        recipientName,
+        recipientPhone,
+        uid,
+        oid,
+        '未確認',
+        comment,
+        paymentMethod
+      ]
     )
     const orderId = result.insertId
 
