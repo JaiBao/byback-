@@ -1,6 +1,6 @@
 // passport/passprt.js
 import passport from 'passport'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import passportLocal from 'passport-local'
 import passportJWT from 'passport-jwt'
 import mysql from 'mysql2/promise'

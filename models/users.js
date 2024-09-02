@@ -1,7 +1,7 @@
 // models/users.js
 import { Schema, model, ObjectId, Error } from 'mongoose'
 import validator from 'validator'
-import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 import { v4 as uuidv4 } from 'uuid'
 
 const cartSchema = new Schema({

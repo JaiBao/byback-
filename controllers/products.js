@@ -1,15 +1,24 @@
 // controllers/products.js
+import { JSDOM } from 'jsdom'
+import createDOMPurify from 'dompurify'
+import { v2 as cloudinary } from 'cloudinary'
+
+const window = new JSDOM('').window
+const DOMPurify = createDOMPurify(window)
+// 店家用新增產品
 export const createProduct = async (req, res) => {
   const pool = req.pool
   try {
     const uid = req.user.uid
-    const [result] = await pool.query('INSERT INTO products (name, price, description, image, sell, category, uid) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+    const sanitizedDescription = DOMPurify.sanitize(req.body.description)
+    const [result] = await pool.query('INSERT INTO products (name, price, description, image, sell, category, tab, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
       req.body.name,
       req.body.price,
-      req.body.description,
+      sanitizedDescription,
       req.file?.path || '',
       req.body.sell,
       req.body.category,
+      req.body.tab, // 添加tab字段
       uid
     ])
     res.status(200).json({ success: true, message: '', result: result.insertId })
@@ -18,7 +27,7 @@ export const createProduct = async (req, res) => {
     res.status(500).json({ success: false, message: '未知錯誤' })
   }
 }
-
+// 首頁用獲取銷售中的產品(亂數)
 export const getSellProducts = async (req, res) => {
   const pool = req.pool
   try {
@@ -26,7 +35,7 @@ export const getSellProducts = async (req, res) => {
       SELECT p.*, u.company_name 
       FROM products p 
       JOIN users u ON p.uid = u.uid 
-      WHERE p.sell = true
+      WHERE p.sell = true AND u.status != 0
       ORDER BY RAND()
     `)
     // console.log('Get sell products result:', result)
@@ -36,7 +45,7 @@ export const getSellProducts = async (req, res) => {
     res.status(500).json({ success: false, message: '未知錯誤' })
   }
 }
-
+// 管理者使用獲取全部產品
 export const getAllProducts = async (req, res) => {
   const pool = req.pool
   const { page = 1, limit = 5, name, sell, manufacturerName } = req.query
@@ -104,7 +113,7 @@ export const getAllProducts = async (req, res) => {
     res.status(500).json({ success: false, message: '未知錯誤' })
   }
 }
-
+// 獲取產品資料
 export const getProduct = async (req, res) => {
   const pool = req.pool
   try {
@@ -128,30 +137,34 @@ export const getProduct = async (req, res) => {
     res.status(500).json({ success: false, message: '未知錯誤' })
   }
 }
-
+// 修改產品
 export const editProduct = async (req, res) => {
   const pool = req.pool
   try {
-    const uid = req.user.uid
-
-    // 現有資料get
-    const [existingProduct] = await pool.query('SELECT image FROM products WHERE id = ?', [req.params.id])
+    // 取得現有資料
+    const [existingProduct] = await pool.query('SELECT image, uid FROM products WHERE id = ?', [req.params.id])
 
     if (existingProduct.length === 0) {
       return res.status(404).json({ success: false, message: '找不到' })
     }
 
-    // 沒換圖片 不更新圖片
-    const imagePath = req.file ? req.file.path : existingProduct[0].image
+    // 如果提供了新圖片並且有舊圖片，那麼刪除舊圖片
+    if (req.file && existingProduct[0].image) {
+      const publicId = existingProduct[0].image.split('/').pop().split('.')[0] // 從路徑中提取 public_id
+      await cloudinary.uploader.destroy(publicId) // 刪除 Cloudinary 上的舊圖片
+    }
 
-    const [result] = await pool.query('UPDATE products SET name = ?, price = ?, description = ?, image = ?, sell = ?, category = ?, uid = ? WHERE id = ?', [
+    // 沒有更換圖片則不更新圖片路徑
+    const imagePath = req.file ? req.file.path : existingProduct[0].image
+    const sanitizedDescription = DOMPurify.sanitize(req.body.description)
+    const [result] = await pool.query('UPDATE products SET name = ?, price = ?, description = ?, image = ?, sell = ?, category = ?, tab = ? WHERE id = ?', [
       req.body.name,
       req.body.price,
-      req.body.description,
+      sanitizedDescription,
       imagePath,
       req.body.sell,
       req.body.category,
-      uid,
+      req.body.tab, // 添加 tab 欄位
       req.params.id
     ])
 
@@ -166,6 +179,7 @@ export const editProduct = async (req, res) => {
   }
 }
 
+// 廠商獲取自家產品
 export const getProductsByUid = async (req, res) => {
   const pool = req.pool
   const { page = 1, limit = 5, name, sell } = req.query
@@ -201,11 +215,12 @@ export const getProductsByUid = async (req, res) => {
     const totalProducts = countResult[0].count
     const totalPages = Math.ceil(totalProducts / limit)
 
-    if (products.length === 0) {
-      res.status(404).json({ success: false, message: '找不到' })
-    } else {
-      res.status(200).json({ success: true, message: '', result: products, totalPages })
-    }
+    res.status(200).json({
+      success: true,
+      message: products.length === 0 ? '沒有找到符合條件的產品' : '',
+      result: products,
+      totalPages
+    })
   } catch (error) {
     console.error('Get products by UID error:', error)
     res.status(500).json({ success: false, message: '未知錯誤' })
@@ -240,8 +255,14 @@ export const searchProductsByStore = async (req, res) => {
 export const searchProducts = async (req, res) => {
   const pool = req.pool
   try {
-    const { category, store } = req.query
-    let query = 'SELECT * FROM products WHERE sell = true'
+    const { category, store, product } = req.query // 添加 product
+
+    let query = `
+      SELECT p.*, u.company_name 
+      FROM products p 
+      JOIN users u ON p.uid = u.uid 
+      WHERE p.sell = true AND u.status != 0
+    `
     const params = []
 
     if (category) {
@@ -252,6 +273,12 @@ export const searchProducts = async (req, res) => {
       query += ' AND uid IN (SELECT uid FROM users WHERE company_name LIKE ?)'
       params.push(`%${store}%`)
     }
+    if (product) {
+      query += ' AND name LIKE ?'
+      params.push(`%${product}%`)
+    }
+
+    query += ' ORDER BY RAND()'
 
     const [result] = await pool.query(query, params)
     res.status(200).json({ success: true, message: '', result })

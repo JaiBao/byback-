@@ -32,6 +32,10 @@ const schema = new Schema(
         message: '分類錯誤'
       }
     },
+    tab: {
+      type: String,
+      required: [true, '缺少分類標籤'] // 新增的 tab 字段
+    },
     uid: {
       type: String,
       required: [true, '缺少 UID']

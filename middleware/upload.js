@@ -14,8 +14,10 @@ const getFolderName = req => {
     return 'store/banner'
   } else if (req.path.includes('/cover')) {
     return 'store/cover'
+  } else if (req.path.includes('/carousel-image')) {
+    return 'carousel'
   }
-  return '' // 根目錄
+  return 'products' // 根目錄
 }
 
 const storage = new CloudinaryStorage({
@@ -37,7 +39,7 @@ const upload = multer({
     }
   },
   limits: {
-    fileSize: 1024 * 1024
+    fileSize: 2800 * 2800
   }
 })
 

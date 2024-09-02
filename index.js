@@ -34,11 +34,17 @@ const app = express()
 app.use(
   cors({
     origin: (origin, callback) => {
-      const allowedOrigins = ['http://localhost:3000', 'http://10.0.0.7:3000', 'http://10.0.0.7']
+      // 如果 `origin` 為 `undefined`，這通常表示是同源請求，可以允許
+      if (!origin) return callback(null, true)
+
+      const allowedOrigins = ['http://localhost:3000', 'http://10.0.0.7:1889', 'http://10.0.0.7']
+
       if (allowedOrigins.includes(origin)) {
+        // 如果 `origin` 在允許的列表中
         callback(null, true)
       } else {
-        callback(new Error('請求被拒'), false)
+        // 如果 `origin` 不在允許的列表中，返回錯誤
+        callback(new Error('CORS policy does not allow access from this origin: ' + origin), false)
       }
     }
   })
