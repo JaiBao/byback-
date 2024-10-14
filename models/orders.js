@@ -86,6 +86,22 @@ const schema = new Schema(
       type: String,
       enum: ['現金', '轉帳'],
       required: [true, '缺少付款方式']
+    },
+    productTotal: {
+      type: Number,
+      required: [true, '缺少產品總額']
+    },
+    orderTotal: {
+      type: Number,
+      required: [true, '缺少訂單總額']
+    },
+    shippingFee: {
+      type: Number,
+      default: 0
+    },
+    discount: {
+      type: Number,
+      default: 0
     }
   },
   { versionKey: false }

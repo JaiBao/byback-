@@ -36,7 +36,8 @@ import {
   getCarouselSettings,
   updateCarouselSettings,
   getStoreOpeningHours,
-  resetPasswordByAccount
+  resetPasswordByAccount,
+  checkUserToken
 } from '../controllers/users.js'
 import { sendVerificationCode } from '../controllers/sendVerificationCode.js'
 import { verifyAccountAndPhone } from '../controllers/verifyAccountAndPhone.js'
@@ -46,7 +47,7 @@ const router = Router()
 
 router.post('/', content('application/json'), register)
 router.post('/login', content('application/json'), auth.login, login)
-
+router.post('/check-token', checkUserToken)
 router.post('/send-verification-code', sendVerificationCode)
 router.post('/resetPasswordByAccount', resetPasswordByAccount)
 router.post('/verifyAccountAndPhone', verifyAccountAndPhone)

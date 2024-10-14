@@ -5,6 +5,7 @@ import cors from 'cors'
 import userRoute from './routes/users.js'
 import productRoute from './routes/products.js'
 import orderRoute from './routes/orders.js'
+import analyticRoute from './routes/analytics.js'
 import './passport/passport.js'
 import { Server as SocketIOServer } from 'socket.io'
 
@@ -17,19 +18,6 @@ const pool = mysql.createPool({
 
 const app = express()
 
-// 設定 CORS
-// app.use(
-//   cors({
-//     origin: (origin, callback) => {
-//       // 允許的來源，需修改為實際需要的來源
-//       if (origin && (origin.includes('localhost:3000') || origin.includes('localhost:4000'))) {
-//         callback(null, true)
-//       } else {
-//         callback(new Error('請求被拒'), false)
-//       }
-//     }
-//   })
-// )
 // 設定 CORS，允許所有來源
 app.use(
   cors({
@@ -37,7 +25,21 @@ app.use(
       // 如果 `origin` 為 `undefined`，這通常表示是同源請求，可以允許
       if (!origin) return callback(null, true)
 
-      const allowedOrigins = ['http://localhost:3000', 'http://10.0.0.7:1889', 'http://10.0.0.7']
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'http://10.0.0.7:1889',
+        'http://10.0.0.7:1891',
+        'http://0.0.0.0:1891',
+        'http://0.0.0.0:1889',
+        'http://10.0.0.7',
+        'http://10.0.0.34',
+        'http://10.0.0.34:3000',
+        'https://www.beifoodorder.com/',
+        'https://www.beifoodorder.com',
+        'http://www.beifoodorder.com/',
+        'http://www.beifoodorder.com'
+      ]
 
       if (allowedOrigins.includes(origin)) {
         // 如果 `origin` 在允許的列表中
@@ -59,6 +61,7 @@ app.use((req, res, next) => {
 app.use('/users', userRoute)
 app.use('/products', productRoute)
 app.use('/orders', orderRoute)
+app.use('/analytics', analyticRoute)
 
 app.get('/', (req, res) => {
   res.status(200).json({ success: true, message: '' })
@@ -80,9 +83,28 @@ const server = app.listen(process.env.PORT || 4000, () => {
 // 設定 Socket.IO 伺服器 CORS
 const io = new SocketIOServer(server, {
   cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://10.0.0.7:1889',
+      'http://10.0.0.7:1891',
+      'http://0.0.0.0:1891',
+      'http://0.0.0.0:1889',
+      'http://10.0.0.7:1888',
+      'http://10.0.0.7',
+      'http://10.0.0.34',
+      'http://10.0.0.34:3000',
+      'https://www.beifoodorder.com/',
+      'https://www.beifoodorder.com',
+      'http://www.beifoodorder.com/',
+      'http://www.beifoodorder.com'
+    ],
+    // origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true
+  },
+  // transports: ['websocket', 'polling'],
+  path: '/socket.io/'
 })
 
 io.on('connection', socket => {

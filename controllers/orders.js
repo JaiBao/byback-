@@ -16,11 +16,31 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: '包含下架商品' })
     }
 
-    const { deliveryDate, deliveryTime, phone, landline, companyName, taxId, recipientName, recipientPhone, uid, comment, address, paymentMethod } = req.body
+    const {
+      deliveryDate,
+      deliveryTime,
+      phone,
+      landline,
+      companyName,
+      taxId,
+      recipientName,
+      recipientPhone,
+      uid,
+      comment,
+      address,
+      paymentMethod,
+      sid,
+      productTotal,
+      shippingFee,
+      discount
+    } = req.body
 
     if (!deliveryDate || !deliveryTime || !paymentMethod) {
       return res.status(400).json({ success: false, message: '送達日期、送達時間和付款方式是必需的' })
     }
+
+    // 計算訂單總額
+    const orderTotal = productTotal + shippingFee - discount
 
     const now = moment()
     const year = now.format('YY')
@@ -30,7 +50,7 @@ export const createOrder = async (req, res) => {
     const oid = `${year}${month}${orderCount.toString().padStart(5, '0')}`
 
     const [result] = await pool.query(
-      'INSERT INTO orders (user_id, date, delivery_date, delivery_time, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, uid, oid, status, comment, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO orders (user_id, date, delivery_date, delivery_time, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, sid,uid, oid, status, comment, payment_method ,product_total, order_total, shipping_fee, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?, ?, ?,?)',
       [
         req.user.id,
         new Date(),
@@ -43,11 +63,16 @@ export const createOrder = async (req, res) => {
         address,
         recipientName,
         recipientPhone,
+        sid,
         uid,
         oid,
         '未確認',
         comment,
-        paymentMethod
+        paymentMethod,
+        productTotal,
+        orderTotal,
+        shippingFee,
+        discount
       ]
     )
     const orderId = result.insertId
@@ -61,12 +86,13 @@ export const createOrder = async (req, res) => {
         return res.status(500).json({ success: false, message: `商品 ID ${productId} 未找到` })
       }
       const totalPrice = item.quantity * product.price
-      await pool.query('INSERT INTO order_products (order_id, product_name, quantity, total_price, status) VALUES (?, ?, ?, ?, ?)', [
+      await pool.query('INSERT INTO order_products (order_id, product_name, quantity, total_price, status , price) VALUES (?, ?, ?, ?, ?,?)', [
         orderId,
         item.product_name,
         item.quantity,
         totalPrice,
-        '未確認'
+        '未確認',
+        product.price
       ])
       productUids.push(product.uid)
     }
@@ -658,7 +684,7 @@ export const getAllOrders = async (req, res) => {
         FROM orders o
         JOIN order_products op ON o.id = op.order_id
         JOIN products p ON op.product_name = p.id
-        JOIN users u ON o.user_id = u.id
+        LEFT JOIN users u ON o.user_id = u.id  -- 加入這一行
         WHERE p.uid = ?
       `
       countQuery = `
@@ -666,7 +692,7 @@ export const getAllOrders = async (req, res) => {
         FROM orders o
         JOIN order_products op ON o.id = op.order_id
         JOIN products p ON op.product_name = p.id
-        JOIN users u ON o.user_id = u.id
+        LEFT JOIN users u ON o.user_id = u.id  -- 加入這一行
         WHERE p.uid = ?
       `
       totalRevenueQuery = `
@@ -674,6 +700,7 @@ export const getAllOrders = async (req, res) => {
         FROM orders o
         JOIN order_products op ON o.id = op.order_id
         JOIN products p ON op.product_name = p.id
+        LEFT JOIN users u ON o.user_id = u.id  -- 加入這一行
         WHERE p.uid = ? AND o.status = '訂單完成'
       `
       queryParams.push(uid)

@@ -43,7 +43,11 @@ export const sendVerificationCode = async (req, res, skipPhoneCheck = false) => 
     const timeDiff = (now - lastSent) / 1000 / 60
 
     if (timeDiff < 10) {
-      return res.status(429).json({ success: false, message: '請等待10分鐘後再試' })
+      const remainingMinutes = Math.ceil(10 - timeDiff) // 計算剩餘的分鐘數，使用 Math.ceil 確保整數
+      return res.status(429).json({
+        success: false,
+        message: `請等待 ${remainingMinutes} 分鐘後再試`
+      })
     }
   }
 

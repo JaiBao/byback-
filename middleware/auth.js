@@ -28,9 +28,9 @@ export const jwt = (req, res, next) => {
     if (error || !data) {
       // 如果是 JWT 錯誤
       if (info instanceof jsonwebtoken.JsonWebTokenError) {
-        return res.status(401).json({ success: false, message: 'JWT 錯誤' })
+        return res.status(401).json({ success: false, message: '帳號已登出' })
       } else {
-        return res.status(401).json({ success: false, message: info.message || '未知錯誤' })
+        return res.status(401).json({ success: false, message: '帳號已登出' })
       }
     }
     req.user = data.user
@@ -43,10 +43,11 @@ export const jwt = (req, res, next) => {
 export const jwtIgnoreExpiration = (req, res, next) => {
   passport.authenticate('jwt-ignore-expiration', { session: false }, (error, data, info) => {
     if (error || !data) {
+      // 如果是 JWT 錯誤
       if (info instanceof jsonwebtoken.JsonWebTokenError) {
-        return res.status(401).json({ success: false, message: 'JWT 錯誤' })
+        return res.status(401).json({ success: false, message: '帳號已登出' })
       } else {
-        return res.status(401).json({ success: false, message: info.message || '未知錯誤' })
+        return res.status(401).json({ success: false, message: '帳號已登出' })
       }
     }
     req.user = data.user

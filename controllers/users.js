@@ -5,105 +5,35 @@ import { v4 as uuidv4 } from 'uuid'
 import { JSDOM } from 'jsdom'
 import createDOMPurify from 'dompurify'
 import { v2 as cloudinary } from 'cloudinary'
+import crypto from 'crypto'
 
 const window = new JSDOM('').window
 const DOMPurify = createDOMPurify(window)
 // 註冊接口
-export const register = async (req, res) => {
-  const pool = req.pool
-  try {
-    const { account, password, email, role = 0, name, address, companyName = null, taxId = null, phoneNumber, gender, birthdate } = req.body
-
-    // 檢查手機號碼是否已經被註冊
-    const [existingPhone] = await pool.query('SELECT id FROM users WHERE phone_number = ?', [phoneNumber])
-    if (existingPhone.length > 0) {
-      return res.status(400).json({ success: false, message: '手機號碼已被註冊' })
-    }
-
-    // 檢查帳號是否已經被註冊
-    const [existingAccount] = await pool.query('SELECT id FROM users WHERE account = ?', [account])
-    if (existingAccount.length > 0) {
-      return res.status(400).json({ success: false, message: '帳號已被註冊' })
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10)
-    const uid = uuidv4()
-    const registrationDate = new Date()
-
-    if (role === 1) {
-      // 若是廠商，先加入 pending_merchants 表
-      await pool.query(
-        'INSERT INTO pending_merchants (account, password, email, role, name, address, company_name, tax_id, phone_number, uid, registration_date, gender, birthdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [account, hashedPassword, email, role, name, address, companyName, taxId, phoneNumber, uid, registrationDate, gender, birthdate]
-      )
-      return res.status(200).json({ success: true, message: '註冊成功，請等待審核' })
-    } else {
-      // 若是一般使用者，直接加入 users 表
-      await pool.query(
-        'INSERT INTO users (account, password, email, role, name, address, company_name, tax_id, phone_number, uid, registration_date, gender, birthdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [account, hashedPassword, email, role, name, address, companyName, taxId, phoneNumber, uid, registrationDate, gender, birthdate]
-      )
-      return res.status(200).json({ success: true, message: '註冊成功' })
-    }
-  } catch (error) {
-    console.error('Register error:', error)
-    if (error.code === 'ER_DUP_ENTRY') {
-      res.status(400).json({ success: false, message: '帳號或郵箱重複' })
-    } else {
-      res.status(500).json({ success: false, message: '未知錯誤', error: error.message })
-    }
-  }
-}
-// 註冊接口(驗證碼)
 // export const register = async (req, res) => {
 //   const pool = req.pool
 //   try {
-//     const {
-//       account,
-//       password,
-//       email,
-//       role = 0,
-//       name,
-//       address,
-//       companyName = null,
-//       taxId = null,
-//       phoneNumber,
-//       gender,
-//       birthdate,
-//       verificationCode // 新增驗證碼字段
-//     } = req.body
+//     const { account, password, email, role = 0, name, address, companyName = null, taxId = null, phoneNumber, gender, birthdate } = req.body
 
-//     // 將手機號碼轉換為國際格式 +8869xxxxxxxx，用於驗證碼檢查
-//     let formattedPhoneNumber = phoneNumber
-//     if (phoneNumber.startsWith('09')) {
-//       formattedPhoneNumber = '+886' + phoneNumber.substring(1)
+//     const taiwanAddressPattern =
+//       /^(台灣|臺灣)?(台北市|新北市|桃園市|台中市|台南市|高雄市|基隆市|新竹市|嘉義市|新竹縣|苗栗縣|彰化縣|南投縣|雲林縣|嘉義縣|屏東縣|宜蘭縣|花蓮縣|台東縣|澎湖縣|金門縣|連江縣)(.*[區|市|鄉|鎮])(.*[路|街|大道|巷])(.*[弄|號]?)$/
+
+//     // 必填欄位檢查
+//     if (!account || !password || !email || !name || !address || !phoneNumber || !gender) {
+//       return res.status(400).json({ success: false, message: '有欄位未填寫' })
 //     }
 
-//     // 驗證手機驗證碼
-//     const [verificationRecord] = await pool.query('SELECT code, created_at FROM verification_codes WHERE phone_number = ? ORDER BY created_at DESC LIMIT 1', [
-//       formattedPhoneNumber
-//     ])
-
-//     if (verificationRecord.length === 0 || verificationRecord[0].code !== verificationCode) {
-//       return res.status(400).json({ success: false, message: '驗證碼錯誤或已過期' })
+//     // 地址格式檢查
+//     if (!taiwanAddressPattern.test(address)) {
+//       return res.status(400).json({ success: false, message: '地址格式錯誤，請輸入正確的地址（例如：台北市信義區忠孝東路）' })
 //     }
-
-//     const codeCreationTime = new Date(verificationRecord[0].created_at)
-//     const currentTime = new Date()
-//     const timeDifference = (currentTime - codeCreationTime) / 1000 / 60 // 以分鐘計算時間差
-
-//     if (timeDifference > 10) {
-//       // 檢查是否超過10分鐘
-//       return res.status(400).json({ success: false, message: '驗證碼已過期，請重新發送' })
-//     }
-
-//     // 驗證手機號碼是否已被註冊
+//     // 檢查手機號碼是否已經被註冊
 //     const [existingPhone] = await pool.query('SELECT id FROM users WHERE phone_number = ?', [phoneNumber])
 //     if (existingPhone.length > 0) {
 //       return res.status(400).json({ success: false, message: '手機號碼已被註冊' })
 //     }
 
-//     // 驗證帳號是否已被註冊
+//     // 檢查帳號是否已經被註冊
 //     const [existingAccount] = await pool.query('SELECT id FROM users WHERE account = ?', [account])
 //     if (existingAccount.length > 0) {
 //       return res.status(400).json({ success: false, message: '帳號已被註冊' })
@@ -137,6 +67,112 @@ export const register = async (req, res) => {
 //     }
 //   }
 // }
+// 註冊接口(驗證碼)
+export const register = async (req, res) => {
+  const pool = req.pool
+  try {
+    const {
+      account,
+      password,
+      email,
+      role = 0,
+      name,
+      address,
+      companyName = null,
+      taxId = null,
+      phoneNumber,
+      gender,
+      birthdate,
+      verificationCode // 新增驗證碼字段
+    } = req.body
+
+    const taiwanAddressPattern =
+      /^(台灣|臺灣)?([台臺]北市|新北市|桃園市|[台臺]中市|[台臺]南市|高雄市|基隆市|新竹市|嘉義市|新竹縣|苗栗縣|彰化縣|南投縣|雲林縣|嘉義縣|屏東縣|宜蘭縣|花蓮縣|[台臺]東縣|澎湖縣|金門縣|連江縣)(.*[區|市|鄉|鎮])(.*[路|街|大道|巷])(.*[弄|號]?)$/
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+    // 必填欄位檢查
+    if (!account || !password || !email || !name || !address || !phoneNumber || !gender) {
+      return res.status(400).json({ success: false, message: '有欄位未填寫' })
+    }
+
+    // 去掉地址中的前後空白、多餘空格，並將「台」替換為「臺」
+    const cleanedAddress = address.trim().replace(/\s+/g, ' ').replace(/台/g, '臺')
+
+    // 地址格式檢查
+    if (!taiwanAddressPattern.test(cleanedAddress)) {
+      return res.status(400).json({ success: false, message: '地址格式錯誤，請輸入正確的地址（例如：台北市信義區忠孝東路）' })
+    }
+
+    // 信箱格式檢查
+    if (!emailPattern.test(email)) {
+      return res.status(400).json({ success: false, message: '信箱格式不正確' })
+    }
+
+    // 將手機號碼轉換為國際格式 +8869xxxxxxxx，用於驗證碼檢查
+    let formattedPhoneNumber = phoneNumber
+    if (phoneNumber.startsWith('09')) {
+      formattedPhoneNumber = '+886' + phoneNumber.substring(1)
+    }
+
+    // 驗證手機驗證碼
+    const [verificationRecord] = await pool.query('SELECT code, created_at FROM verification_codes WHERE phone_number = ? ORDER BY created_at DESC LIMIT 1', [
+      formattedPhoneNumber
+    ])
+
+    if (verificationRecord.length === 0 || verificationRecord[0].code !== verificationCode) {
+      return res.status(400).json({ success: false, message: '驗證碼錯誤或已過期' })
+    }
+
+    const codeCreationTime = new Date(verificationRecord[0].last_sent_at)
+    const currentTime = new Date()
+    const timeDifference = (currentTime - codeCreationTime) / 1000 / 60 // 以分鐘計算時間差
+
+    if (timeDifference > 10) {
+      // 檢查是否超過10分鐘
+      return res.status(400).json({ success: false, message: '驗證碼已過期，請重新發送' })
+    }
+
+    // 驗證手機號碼是否已被註冊
+    const [existingPhone] = await pool.query('SELECT id FROM users WHERE phone_number = ?', [phoneNumber])
+    if (existingPhone.length > 0) {
+      return res.status(400).json({ success: false, message: '手機號碼已被註冊' })
+    }
+
+    // 驗證帳號是否已被註冊
+    const [existingAccount] = await pool.query('SELECT id FROM users WHERE account = ?', [account])
+    if (existingAccount.length > 0) {
+      return res.status(400).json({ success: false, message: '帳號已被註冊' })
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+    const uid = uuidv4()
+    const registrationDate = new Date()
+
+    if (role === 1) {
+      // 若是廠商，先加入 pending_merchants 表
+      await pool.query(
+        'INSERT INTO pending_merchants (account, password, email, role, name, address, company_name, tax_id, phone_number, uid, registration_date, gender, birthdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [account, hashedPassword, email, role, name, cleanedAddress, companyName, taxId, phoneNumber, uid, registrationDate, gender, birthdate]
+      )
+      return res.status(200).json({ success: true, message: '註冊成功，請等待審核' })
+    } else {
+      // 若是一般使用者，直接加入 users 表
+      await pool.query(
+        'INSERT INTO users (account, password, email, role, name, address, company_name, tax_id, phone_number, uid, registration_date, gender, birthdate) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [account, hashedPassword, email, role, name, cleanedAddress, companyName, taxId, phoneNumber, uid, registrationDate, gender, birthdate]
+      )
+      return res.status(200).json({ success: true, message: '註冊成功' })
+    }
+  } catch (error) {
+    console.error('Register error:', error)
+    if (error.code === 'ER_DUP_ENTRY') {
+      res.status(400).json({ success: false, message: '帳號或郵箱重複' })
+    } else {
+      res.status(500).json({ success: false, message: '未知錯誤', error: error.message })
+    }
+  }
+}
 
 // 審核接口
 export const approveMerchant = async (req, res) => {
@@ -178,9 +214,16 @@ export const login = async (req, res) => {
       return res.status(400).json({ success: false, message: '帳號或密碼錯誤' })
     }
 
+    // 在生成新 token 之前，刪除該用戶的舊 token
+    await pool.query('DELETE FROM user_tokens WHERE user_id = ?', [user.id])
+
+    // 生成新 token
     const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, { expiresIn: '1 days' })
+
+    // 插入新 token
     await pool.query('INSERT INTO user_tokens (user_id, token) VALUES (?, ?)', [user.id, token])
 
+    // 返回登入成功訊息與用戶信息
     res.status(200).json({
       success: true,
       message: '',
@@ -256,32 +299,84 @@ export const getUser = async (req, res) => {
   }
 }
 
+// 修正購物車
 export const editCart = async (req, res) => {
   const pool = req.pool
   try {
     const userId = req.user.id
-    const { p_id, quantity, uid } = req.body // 從請求體中獲取 p_id, quantity, 和 uid
+    const { p_id, uid, action, options, items_id, quantity } = req.body
 
-    // 檢查購物車中是否已經存在該商品
-    const [userCart] = await pool.query('SELECT * FROM user_cart WHERE user_id = ? AND product_name = ?', [userId, p_id])
-
-    if (userCart.length > 0) {
-      const newQuantity = userCart[0].quantity + parseInt(quantity)
-      if (newQuantity <= 0) {
-        await pool.query('DELETE FROM user_cart WHERE user_id = ? AND product_name = ?', [userId, p_id])
-      } else {
-        await pool.query('UPDATE user_cart SET quantity = ? WHERE user_id = ? AND product_name = ?', [newQuantity, userId, p_id])
-      }
-    } else {
-      const [products] = await pool.query('SELECT * FROM products WHERE id = ? AND sell = 1', [p_id])
-      if (products.length === 0) {
-        res.status(404).json({ success: false, message: '找不到' })
-        return
-      }
-      // 插入新的購物車項，包括 uid
-      await pool.query('INSERT INTO user_cart (user_id, product_name, quantity, uid) VALUES (?, ?, ?, ?)', [userId, p_id, parseInt(quantity), uid])
+    // 使用前端傳遞的 items_id，如果不存在才生成
+    let itemsId = items_id
+    if (!itemsId) {
+      const optionsString = JSON.stringify(options || [])
+      itemsId = crypto.createHash('md5').update(optionsString).digest('hex')
     }
 
+    if (action === 'remove') {
+      // 刪除購物車中的該商品
+      await pool.query('DELETE FROM user_cart WHERE user_id = ? AND items_id = ?', [userId, itemsId])
+      await pool.query('DELETE FROM user_cart_options WHERE items_id = ?', [itemsId]) // 刪除相關選項
+      return res.status(200).json({ success: true, message: '商品已刪除' })
+    }
+
+    if (action === 'new') {
+      // 檢查是否已經存在相同的 items_id
+      const [existingCart] = await pool.query('SELECT * FROM user_cart WHERE user_id = ? AND items_id = ?', [userId, itemsId])
+
+      if (existingCart.length > 0) {
+        // 如果已存在，則更新數量而不是插入
+        const newQuantity = existingCart[0].quantity + parseInt(quantity)
+        await pool.query('UPDATE user_cart SET quantity = ? WHERE user_id = ? AND items_id = ?', [newQuantity, userId, itemsId])
+      } else {
+        // 插入新的購物車項
+        await pool.query('INSERT INTO user_cart (user_id, product_name, quantity, uid, items_id) VALUES (?, ?, ?, ?, ?)', [
+          userId,
+          p_id,
+          parseInt(quantity),
+          uid,
+          itemsId
+        ])
+
+        // 插入新選項（如果有選項）
+        if (options && options.length > 0) {
+          for (const option of options) {
+            await pool.query('INSERT INTO user_cart_options (items_id, option_name, option_value, option_price) VALUES (?, ?, ?, ?)', [
+              itemsId,
+              option.name,
+              option.value_name,
+              option.price
+            ])
+          }
+        }
+      }
+    } else if (action === 'add' || action === 'set') {
+      // 檢查購物車中是否已經存在該商品
+      const [userCart] = await pool.query('SELECT * FROM user_cart WHERE user_id = ? AND items_id = ?', [userId, itemsId])
+
+      let newQuantity
+      if (userCart.length > 0) {
+        // 如果找到相同商品，根據 action 更新數量
+        if (action === 'set') {
+          newQuantity = parseInt(quantity)
+        } else if (action === 'add') {
+          newQuantity = userCart[0].quantity + parseInt(quantity)
+        }
+
+        // 如果新數量小於等於 0，則刪除該商品
+        if (newQuantity <= 0) {
+          await pool.query('DELETE FROM user_cart WHERE user_id = ? AND items_id = ?', [userId, itemsId])
+          await pool.query('DELETE FROM user_cart_options WHERE items_id = ?', [itemsId]) // 刪除相關選項
+        } else {
+          // 否則更新數量
+          await pool.query('UPDATE user_cart SET quantity = ? WHERE user_id = ? AND items_id = ?', [newQuantity, userId, itemsId])
+        }
+      } else {
+        return res.status(404).json({ success: false, message: '找不到購物車中的商品' })
+      }
+    }
+
+    // 返回更新後的購物車狀態
     const [updatedCart] = await pool.query('SELECT * FROM user_cart WHERE user_id = ?', [userId])
     const cartQuantity = updatedCart.reduce((total, current) => total + current.quantity, 0)
 
@@ -305,24 +400,41 @@ export const clearCart = async (req, res) => {
     res.status(500).json({ success: false, message: '未知錯誤', error: error.message })
   }
 }
-
+// 獲取
 export const getCart = async (req, res) => {
   const pool = req.pool
   try {
     const userId = req.user.id
+
+    // 獲取購物車中的所有商品
     const [userCart] = await pool.query('SELECT * FROM user_cart WHERE user_id = ?', [userId])
+
     if (userCart.length === 0) {
       res.status(200).json({ success: true, message: '', result: [] })
       return
     }
 
+    // 獲取所有的 items_id
+    const itemsIds = userCart.map(item => item.items_id)
+
+    // 取得購物車中所有商品的選項
+    const [cartOptions] = await pool.query('SELECT * FROM user_cart_options WHERE items_id IN (?)', [itemsIds])
+
+    // 查詢商品數據
     const productIds = userCart.map(item => item.product_name)
     const [products] = await pool.query('SELECT * FROM products WHERE id IN (?)', [productIds])
 
-    const populatedCart = userCart.map(item => ({
-      ...item,
-      product: products.find(product => product.id === parseInt(item.product_name))
-    }))
+    // 整合選項到對應的商品項目
+    const populatedCart = userCart.map(cartItem => {
+      const product = products.find(product => product.id === parseInt(cartItem.product_name))
+      const options = cartOptions.filter(option => option.items_id === cartItem.items_id)
+
+      return {
+        ...cartItem,
+        product,
+        options // 包含該購物車項目的選項
+      }
+    })
 
     res.status(200).json({ success: true, message: '', result: populatedCart })
   } catch (error) {
@@ -337,6 +449,24 @@ export const updateUser = async (req, res) => {
   const { email, name, address, companyName, taxId, phoneNumber, currentPassword, password } = req.body
 
   try {
+    const taiwanAddressPattern =
+      /^(台灣|臺灣)?([台臺]北市|新北市|桃園市|[台臺]中市|[台臺]南市|高雄市|基隆市|新竹市|嘉義市|新竹縣|苗栗縣|彰化縣|南投縣|雲林縣|嘉義縣|屏東縣|宜蘭縣|花蓮縣|[台臺]東縣|澎湖縣|金門縣|連江縣)(.*[區|市|鄉|鎮])(.*[路|街|大道|巷])(.*[弄|號]?)$/
+
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+    // 去掉地址中的前後空白、多餘空格，並將「台」替換為「臺」
+    const cleanedAddress = address.trim().replace(/\s+/g, ' ').replace(/台/g, '臺')
+
+    // 地址格式檢查
+    if (!taiwanAddressPattern.test(cleanedAddress)) {
+      return res.status(400).json({ success: false, message: '地址格式錯誤，請輸入正確的地址（例如：台北市信義區忠孝東路）' })
+    }
+
+    // 信箱格式檢查
+    if (!emailPattern.test(email)) {
+      return res.status(400).json({ success: false, message: '信箱格式不正確' })
+    }
+
     const [user] = await pool.query('SELECT * FROM users WHERE id = ?', [userId])
     if (user.length === 0) {
       return res.status(404).json({ success: false, message: '用戶不存在' })
@@ -366,7 +496,7 @@ export const updateUser = async (req, res) => {
     const updateFields = {
       email,
       name,
-      address,
+      address: cleanedAddress,
       company_name: companyName,
       tax_id: taxId,
       phone_number: phoneNumber
@@ -462,30 +592,36 @@ export const uploadCover = async (req, res) => {
 export const updateDescription = async (req, res) => {
   const pool = req.pool
   const userId = req.user.id
-  const { description, categories, openingHours } = req.body
+  const { description, categories, openingHours, storePhone } = req.body
 
   try {
+    // 對 description 進行安全處理
     const sanitizedDescription = DOMPurify.sanitize(description)
+
+    // 從資料庫取得目前的記錄
     const [existingRecord] = await pool.query('SELECT * FROM user_stores WHERE user_id = ?', [userId])
+
     if (existingRecord.length === 0) {
-      await pool.query('INSERT INTO user_stores (user_id, description, categories, opening_hours, product_tabs) VALUES (?, ?, ?, ?, ?)', [
-        userId,
-        sanitizedDescription,
-        categories,
-        openingHours,
-        '' // 插入空的 productTabs，防止覆蓋
-      ])
+      // 插入新記錄，若不存在
+      await pool.query(
+        'INSERT INTO user_stores (user_id, description, categories, opening_hours, store_phone, product_tabs) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, sanitizedDescription, categories, openingHours, storePhone, ''] // 如果是新記錄，則 product_tabs 設定為空字串
+      )
     } else {
-      // 保留現有的 productTabs
+      // 如果已經有記錄，則保持原始的 product_tabs 值
       const currentProductTabs = existingRecord[0].product_tabs
-      await pool.query('UPDATE user_stores SET description = ?, categories = ?, opening_hours = ?, product_tabs = ? WHERE user_id = ?', [
+
+      // 更新其他欄位，但保持 product_tabs 不變
+      await pool.query('UPDATE user_stores SET description = ?, categories = ?, opening_hours = ?, store_phone = ?, product_tabs = ? WHERE user_id = ?', [
         sanitizedDescription,
         categories,
         openingHours,
-        currentProductTabs, // 保留原本的 productTabs
+        storePhone,
+        currentProductTabs,
         userId
       ])
     }
+
     res.status(200).json({ success: true, message: '店家描述及分類已更新' })
   } catch (error) {
     console.error('Update description error:', error)
@@ -500,11 +636,18 @@ export const updateProductTabs = async (req, res) => {
 
   try {
     const [existingRecord] = await pool.query('SELECT * FROM user_stores WHERE user_id = ?', [userId])
+
     if (existingRecord.length === 0) {
-      return res.status(404).json({ success: false, message: '找不到相關店家信息' })
+      // 如果不存在記錄，插入一條新記錄，並只更新 product_tabs，其他欄位設置為默認值
+      await pool.query(
+        'INSERT INTO user_stores (user_id, description, categories, opening_hours, store_phone, product_tabs) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, '', '', '', '', productTabs] // 其他欄位設定為空字串或默認值
+      )
     } else {
+      // 如果記錄已經存在，只更新 product_tabs
       await pool.query('UPDATE user_stores SET product_tabs = ? WHERE user_id = ?', [productTabs, userId])
     }
+
     res.status(200).json({ success: true, message: '產品分類已更新' })
   } catch (error) {
     console.error('Update product tabs error:', error)
@@ -516,7 +659,7 @@ export const getUserStoreImages = async (req, res) => {
   const pool = req.pool
   try {
     const [result] = await pool.query(
-      'SELECT banner, cover, description, categories, opening_hours AS openingHours, product_tabs AS productTabs FROM user_stores WHERE user_id = ?',
+      'SELECT banner, cover, description, categories, opening_hours AS openingHours,store_phone AS storePhone ,product_tabs AS productTabs FROM user_stores WHERE user_id = ?',
       [req.user.id]
     )
 
@@ -530,6 +673,7 @@ export const getUserStoreImages = async (req, res) => {
           description: '',
           categories: [],
           openingHours: '',
+          storePhone: '',
           productTabs: []
         }
       })
@@ -546,11 +690,16 @@ export const getStores = async (req, res) => {
   const pool = req.pool
   try {
     const [stores] = await pool.query(`
-      SELECT u.uid, u.company_name, us.cover,u.address, us.description, us.categories
+      SELECT u.uid, u.company_name, us.cover, u.address, us.description, us.categories
       FROM users u
       LEFT JOIN user_stores us ON u.id = us.user_id
-      WHERE u.role = 1 AND u.status!=0
-        ORDER BY RAND()
+      WHERE u.role = 1 AND u.status != 0
+      AND EXISTS (
+        SELECT 1 
+        FROM products p 
+        WHERE p.uid = u.uid AND p.sell = 1
+      )
+      ORDER BY RAND()
     `)
     res.status(200).json({ success: true, result: stores })
   } catch (error) {
@@ -605,7 +754,7 @@ export const getStoreInfo = async (req, res) => {
   try {
     const [stores] = await pool.query(
       `
-      SELECT u.company_name,u.address, us.banner,us.cover,us.opening_hours,us.product_tabs,us.description
+      SELECT u.company_name,u.address, us.banner,us.cover,us.opening_hours,us.product_tabs,us.description,us.store_phone
       FROM users u
       LEFT JOIN user_stores us ON u.id = us.user_id
       WHERE u.uid = ?
@@ -983,5 +1132,36 @@ export const updateCarouselSettings = async (req, res) => {
   } catch (error) {
     console.error('更新輪播設定錯誤:', error)
     res.status(500).json({ success: false, message: '無法更新輪播設定' })
+  }
+}
+
+export const checkUserToken = async (req, res) => {
+  const pool = req.pool
+  try {
+    // 從請求中提取 token
+    const { token } = req.body
+
+    // 查詢 user_tokens 表是否有相符合的 token
+    const [result] = await pool.query('SELECT token FROM user_tokens WHERE token = ?', [token])
+
+    // 如果找不到 token，返回無效狀態
+    if (result.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token 無效或已登出'
+      })
+    }
+
+    // 如果 token 有效，返回成功訊息
+    res.status(200).json({
+      success: true,
+      message: 'Token 有效'
+    })
+  } catch (error) {
+    console.error('Token 檢查錯誤:', error)
+    res.status(500).json({
+      success: false,
+      message: '伺服器錯誤，請稍後再試'
+    })
   }
 }

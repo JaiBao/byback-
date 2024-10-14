@@ -107,12 +107,67 @@ export const getAllProducts = async (req, res) => {
     const totalProducts = countResult[0].count
     const totalPages = Math.ceil(totalProducts / limit)
 
+    // 為每個產品查詢其選項種類和選項
+    for (const product of products) {
+      const [options] = await pool.query(
+        `SELECT po.id, po.name, pov.name as option_name, pov.price 
+         FROM product_options po 
+         LEFT JOIN product_option_values pov ON po.id = pov.option_id 
+         WHERE po.product_id = ?`,
+        [product.id]
+      )
+      product.options = options // 將選項數據綁定到產品
+    }
+
     res.status(200).json({ success: true, message: '', result: products, totalPages })
   } catch (error) {
     console.error('Get all products error:', error)
     res.status(500).json({ success: false, message: '未知錯誤' })
   }
 }
+
+// 替產品加入選項
+export const addProductOptions = async (req, res) => {
+  const pool = req.pool
+  const { productId, options } = req.body
+
+  try {
+    // 確認 productId 存在且有效
+    const [productCheck] = await pool.query('SELECT id FROM products WHERE id = ?', [productId])
+    if (productCheck.length === 0) {
+      return res.status(400).json({ success: false, message: '產品不存在' })
+    }
+
+    // 刪除舊的選項及其相關的選項值
+    const [existingOptions] = await pool.query('SELECT id FROM product_options WHERE product_id = ?', [productId])
+
+    for (const existingOption of existingOptions) {
+      // 刪除 product_option_values 表中的相關記錄
+      await pool.query('DELETE FROM product_option_values WHERE option_id = ?', [existingOption.id])
+      // 刪除 product_options 表中的記錄
+      await pool.query('DELETE FROM product_options WHERE id = ?', [existingOption.id])
+    }
+
+    // 插入新的選項和選項值
+    for (const option of options) {
+      const [result] = await pool.query('INSERT INTO product_options (product_id, name) VALUES (?, ?)', [productId, option.name])
+      const optionId = result.insertId
+
+      // 插入該選項種類下的所有選項
+      if (option.values && option.values.length > 0) {
+        for (const value of option.values) {
+          await pool.query('INSERT INTO product_option_values (option_id, name, price) VALUES (?, ?, ?)', [optionId, value.name, value.price])
+        }
+      }
+    }
+
+    res.status(200).json({ success: true, message: '選項已添加成功' })
+  } catch (error) {
+    console.error('Add product options error:', error)
+    res.status(500).json({ success: false, message: '添加選項時出現錯誤' })
+  }
+}
+
 // 獲取產品資料
 export const getProduct = async (req, res) => {
   const pool = req.pool
@@ -215,6 +270,18 @@ export const getProductsByUid = async (req, res) => {
     const totalProducts = countResult[0].count
     const totalPages = Math.ceil(totalProducts / limit)
 
+    // 為每個產品查詢其選項種類和選項
+    for (const product of products) {
+      const [options] = await pool.query(
+        `SELECT po.id, po.name, pov.name as option_name, pov.price 
+         FROM product_options po 
+         LEFT JOIN product_option_values pov ON po.id = pov.option_id 
+         WHERE po.product_id = ?`,
+        [product.id]
+      )
+      product.options = options // 將選項數據綁定到產品
+    }
+
     res.status(200).json({
       success: true,
       message: products.length === 0 ? '沒有找到符合條件的產品' : '',
@@ -292,7 +359,7 @@ export const searchProducts = async (req, res) => {
 export const getProductsByStoreUid = async (req, res) => {
   const pool = req.pool
   try {
-    const [result] = await pool.query(
+    const [products] = await pool.query(
       `
       SELECT p.*, u.company_name 
       FROM products p 
@@ -301,7 +368,23 @@ export const getProductsByStoreUid = async (req, res) => {
     `,
       [req.params.uid]
     )
-    res.status(200).json({ success: true, message: '', result })
+
+    // 為每個產品查詢其選項和選項種類
+    for (const product of products) {
+      const [options] = await pool.query(
+        `
+        SELECT po.id, po.name AS option_name, pov.name AS value_name, pov.price 
+        FROM product_options po 
+        LEFT JOIN product_option_values pov ON po.id = pov.option_id 
+        WHERE po.product_id = ?
+        `,
+        [product.id]
+      )
+
+      // 如果該產品沒有選項，則賦予空陣列
+      product.options = options.length ? options : []
+    }
+    res.status(200).json({ success: true, message: '', result: products })
   } catch (error) {
     console.error('Get products by store error:', error)
     res.status(500).json({ success: false, message: '未知錯誤' })

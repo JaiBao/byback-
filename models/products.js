@@ -28,7 +28,7 @@ const schema = new Schema(
       type: String,
       required: [true, '缺少分類'],
       enum: {
-        values: ['中式料理', '韓式料理', '日式料理', '手搖杯飲料', '其他'],
+        values: ['中式料理', '韓式料理', '日式料理', '手搖杯飲料', '台式料理', '甜品點心', '其他'],
         message: '分類錯誤'
       }
     },

@@ -12,12 +12,14 @@ import {
   editProduct,
   getProductsByUid,
   searchProducts,
-  getProductsByStoreUid
+  getProductsByStoreUid,
+  addProductOptions
 } from '../controllers/products.js'
 
 const router = Router()
 
 router.post('/', content('multipart/form-data'), jwt, admin, upload, createProduct)
+router.post('/addOptions', jwt, admin, addProductOptions)
 router.get('/me', jwt, admin, getProductsByUid)
 router.get('/', getSellProducts)
 router.get('/all', jwt, admin, getAllProducts)
