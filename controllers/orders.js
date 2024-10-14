@@ -1,6 +1,5 @@
 import { io } from '../index.js'
 import moment from 'moment'
-
 export const createOrder = async (req, res) => {
   const pool = req.pool
   try {
@@ -9,10 +8,17 @@ export const createOrder = async (req, res) => {
       return res.status(400).json({ success: false, message: '購物車是空的' })
     }
 
-    const productIds = userCart.map(item => item.product_name)
+    // 獲取購物車商品ID
+    const productIds = [...new Set(userCart.map(item => item.product_name))]
     const [products] = await pool.query('SELECT * FROM products WHERE id IN (?) AND sell = true', [productIds])
 
-    if (products.length !== userCart.length) {
+    // 上架商品集合
+    const availableProductIds = new Set(products.map(p => p.id))
+
+    // 檢查是否都上架
+    const hasUnavailableProducts = userCart.some(item => !availableProductIds.has(parseInt(item.product_name)))
+
+    if (hasUnavailableProducts) {
       return res.status(400).json({ success: false, message: '包含下架商品' })
     }
 
@@ -50,7 +56,7 @@ export const createOrder = async (req, res) => {
     const oid = `${year}${month}${orderCount.toString().padStart(5, '0')}`
 
     const [result] = await pool.query(
-      'INSERT INTO orders (user_id, date, delivery_date, delivery_time, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, sid,uid, oid, status, comment, payment_method ,product_total, order_total, shipping_fee, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?, ?, ?,?)',
+      'INSERT INTO orders (user_id, date, delivery_date, delivery_time, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, sid, uid, oid, status, comment, payment_method ,product_total, order_total, shipping_fee, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         req.user.id,
         new Date(),
@@ -78,6 +84,7 @@ export const createOrder = async (req, res) => {
     const orderId = result.insertId
 
     const productUids = []
+
     for (const item of userCart) {
       const productId = parseInt(item.product_name)
       const product = products.find(p => p.id === productId)
@@ -86,22 +93,33 @@ export const createOrder = async (req, res) => {
         return res.status(500).json({ success: false, message: `商品 ID ${productId} 未找到` })
       }
       const totalPrice = item.quantity * product.price
-      await pool.query('INSERT INTO order_products (order_id, product_name, quantity, total_price, status , price) VALUES (?, ?, ?, ?, ?,?)', [
-        orderId,
-        item.product_name,
-        item.quantity,
-        totalPrice,
-        '未確認',
-        product.price
-      ])
+
+      // 插入訂單產品，獲取插入的 op_id
+      const [orderProductResult] = await pool.query(
+        'INSERT INTO order_products (order_id, product_name, quantity, total_price, status, price) VALUES (?, ?, ?, ?, ?, ?)',
+        [orderId, item.product_name, item.quantity, totalPrice, '未確認', product.price]
+      )
+      const opId = orderProductResult.insertId
+
+      // 查詢該購物車項目的選項
+      const [cartOptions] = await pool.query('SELECT * FROM user_cart_options WHERE items_id = ?', [item.items_id])
+
+      // 將選項插入到 order_product_options 表
+      for (const option of cartOptions) {
+        await pool.query('INSERT INTO order_product_options (op_id, option_name, option_value, option_price) VALUES (?, ?, ?, ?)', [
+          opId,
+          option.option_name,
+          option.option_value,
+          option.option_price
+        ])
+      }
+
       productUids.push(product.uid)
     }
 
+    // 清空購物車
     await pool.query('DELETE FROM user_cart WHERE user_id = ?', [req.user.id])
-
-    // 獲取訂單產品 UID
-    const [orderProducts] = await pool.query('SELECT DISTINCT p.uid FROM order_products op JOIN products p ON op.product_name = p.id WHERE op.order_id = ?', [orderId])
-    const relatedManufacturerIds = orderProducts.map(product => product.uid)
+    await pool.query('DELETE FROM user_cart_options WHERE items_id IN (?)', [userCart.map(item => item.items_id)])
 
     // 通知管理員有新訂單
     const newOrderMessage = {
@@ -110,7 +128,7 @@ export const createOrder = async (req, res) => {
       time: moment().format('YYYY-MM-DD HH:mm:ss'),
       operatorId: req.user.id,
       operatorName: req.user.name,
-      relatedManufacturerIds
+      relatedManufacturerIds: productUids
     }
     io.emit('newOrder', newOrderMessage)
 
@@ -120,6 +138,126 @@ export const createOrder = async (req, res) => {
     res.status(500).json({ success: false, message: '未知錯誤', error: error.message })
   }
 }
+
+// export const createOrder = async (req, res) => {
+//   const pool = req.pool
+//   try {
+//     const [userCart] = await pool.query('SELECT * FROM user_cart WHERE user_id = ?', [req.user.id])
+//     if (userCart.length === 0) {
+//       return res.status(400).json({ success: false, message: '購物車是空的' })
+//     }
+
+//     const productIds = userCart.map(item => item.product_name)
+//     const [products] = await pool.query('SELECT * FROM products WHERE id IN (?) AND sell = true', [productIds])
+
+//     if (products.length !== userCart.length) {
+//       return res.status(400).json({ success: false, message: '包含下架商品' })
+//     }
+
+//     const {
+//       deliveryDate,
+//       deliveryTime,
+//       phone,
+//       landline,
+//       companyName,
+//       taxId,
+//       recipientName,
+//       recipientPhone,
+//       uid,
+//       comment,
+//       address,
+//       paymentMethod,
+//       sid,
+//       productTotal,
+//       shippingFee,
+//       discount
+//     } = req.body
+
+//     if (!deliveryDate || !deliveryTime || !paymentMethod) {
+//       return res.status(400).json({ success: false, message: '送達日期、送達時間和付款方式是必需的' })
+//     }
+
+//     // 計算訂單總額
+//     const orderTotal = productTotal + shippingFee - discount
+
+//     const now = moment()
+//     const year = now.format('YY')
+//     const month = now.format('MM')
+//     const [orderCountResult] = await pool.query('SELECT COUNT(*) as orderCount FROM orders WHERE DATE_FORMAT(date, "%Y-%m") = ?', [`${now.format('YYYY-MM')}`])
+//     const orderCount = orderCountResult[0].orderCount + 1
+//     const oid = `${year}${month}${orderCount.toString().padStart(5, '0')}`
+
+//     const [result] = await pool.query(
+//       'INSERT INTO orders (user_id, date, delivery_date, delivery_time, phone, landline, company_name, tax_id, address, recipient_name, recipient_phone, sid,uid, oid, status, comment, payment_method ,product_total, order_total, shipping_fee, discount) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?, ?, ?, ?,?)',
+//       [
+//         req.user.id,
+//         new Date(),
+//         deliveryDate,
+//         deliveryTime,
+//         phone,
+//         landline,
+//         companyName,
+//         taxId,
+//         address,
+//         recipientName,
+//         recipientPhone,
+//         sid,
+//         uid,
+//         oid,
+//         '未確認',
+//         comment,
+//         paymentMethod,
+//         productTotal,
+//         orderTotal,
+//         shippingFee,
+//         discount
+//       ]
+//     )
+//     const orderId = result.insertId
+
+//     const productUids = []
+//     for (const item of userCart) {
+//       const productId = parseInt(item.product_name)
+//       const product = products.find(p => p.id === productId)
+//       if (!product) {
+//         console.error(`Product not found for id: ${productId}`)
+//         return res.status(500).json({ success: false, message: `商品 ID ${productId} 未找到` })
+//       }
+//       const totalPrice = item.quantity * product.price
+//       await pool.query('INSERT INTO order_products (order_id, product_name, quantity, total_price, status , price) VALUES (?, ?, ?, ?, ?,?)', [
+//         orderId,
+//         item.product_name,
+//         item.quantity,
+//         totalPrice,
+//         '未確認',
+//         product.price
+//       ])
+//       productUids.push(product.uid)
+//     }
+
+//     await pool.query('DELETE FROM user_cart WHERE user_id = ?', [req.user.id])
+
+//     // 獲取訂單產品 UID
+//     const [orderProducts] = await pool.query('SELECT DISTINCT p.uid FROM order_products op JOIN products p ON op.product_name = p.id WHERE op.order_id = ?', [orderId])
+//     const relatedManufacturerIds = orderProducts.map(product => product.uid)
+
+//     // 通知管理員有新訂單
+//     const newOrderMessage = {
+//       oid,
+//       updateMessage: `有新訂單進來，訂單編號: ${oid}`,
+//       time: moment().format('YYYY-MM-DD HH:mm:ss'),
+//       operatorId: req.user.id,
+//       operatorName: req.user.name,
+//       relatedManufacturerIds
+//     }
+//     io.emit('newOrder', newOrderMessage)
+
+//     res.status(200).json({ success: true, message: '' })
+//   } catch (error) {
+//     console.error('加入orders error:', error)
+//     res.status(500).json({ success: false, message: '未知錯誤', error: error.message })
+//   }
+// }
 
 export const updateOrderProductStatus = async (req, res) => {
   const pool = req.pool
@@ -434,6 +572,8 @@ export const getMyOrders = async (req, res) => {
     `,
       [orderIds]
     )
+    const orderProductIds = orderProducts.map(op => op.id)
+    const [orderProductOptions] = await pool.query('SELECT * FROM order_product_options WHERE op_id IN (?)', [orderProductIds])
 
     const result = orders.map(order => ({
       ...order,
@@ -447,7 +587,8 @@ export const getMyOrders = async (req, res) => {
           total_price: op.total_price,
           status: op.status,
           cancel_reason: op.cancel_reason,
-          price: op.product_price
+          price: op.product_price,
+          options: orderProductOptions.filter(opt => opt.op_id === op.id)
         }))
     }))
 
@@ -523,6 +664,9 @@ export const getIncompleteOrders = async (req, res) => {
       [orderIds]
     )
 
+    const orderProductIds = orderProducts.map(op => op.id)
+    const [orderProductOptions] = await pool.query('SELECT * FROM order_product_options WHERE op_id IN (?)', [orderProductIds])
+
     const result = orders.map(order => ({
       ...order,
       products: orderProducts
@@ -535,7 +679,8 @@ export const getIncompleteOrders = async (req, res) => {
           total_price: op.total_price,
           status: op.status,
           cancel_reason: op.cancel_reason,
-          price: op.product_price
+          price: op.product_price,
+          options: orderProductOptions.filter(opt => opt.op_id === op.id)
         }))
     }))
 
@@ -610,6 +755,8 @@ export const getCompletedOrders = async (req, res) => {
     `,
       [orderIds]
     )
+    const orderProductIds = orderProducts.map(op => op.id)
+    const [orderProductOptions] = await pool.query('SELECT * FROM order_product_options WHERE op_id IN (?)', [orderProductIds])
 
     const result = orders.map(order => ({
       ...order,
@@ -623,7 +770,8 @@ export const getCompletedOrders = async (req, res) => {
           total_price: op.total_price,
           status: op.status,
           cancel_reason: op.cancel_reason,
-          price: op.product_price
+          price: op.product_price,
+          options: orderProductOptions.filter(opt => opt.op_id === op.id)
         }))
     }))
 
@@ -782,6 +930,9 @@ export const getAllOrders = async (req, res) => {
       [orderIds]
     )
 
+    const orderProductIds = orderProducts.map(op => op.id)
+    const [orderProductOptions] = await pool.query('SELECT * FROM order_product_options WHERE op_id IN (?)', [orderProductIds])
+
     // 組合訂單與產品數據
     const ordersWithProducts = orders.map(order => ({
       ...order,
@@ -797,7 +948,8 @@ export const getAllOrders = async (req, res) => {
           cancel_reason: product.cancel_reason,
           price: product.product_price,
           uid: product.uid,
-          manufacturer_name: product.manufacturer_name
+          manufacturer_name: product.manufacturer_name,
+          options: orderProductOptions.filter(opt => opt.op_id === product.id)
         })),
       manufacturerName: orderProducts.find(product => product.order_id === order.id)?.manufacturer_name || '未知廠商',
       companyName: order.company_name,
@@ -890,6 +1042,9 @@ export const getAllCompletedOrders = async (req, res) => {
       [orderIds]
     )
 
+    const orderProductIds = orderProducts.map(op => op.id)
+    const [orderProductOptions] = await pool.query('SELECT * FROM order_product_options WHERE op_id IN (?)', [orderProductIds])
+
     const ordersWithProducts = orders.map(order => ({
       ...order,
       products: orderProducts
@@ -904,7 +1059,8 @@ export const getAllCompletedOrders = async (req, res) => {
           cancel_reason: product.cancel_reason,
           price: product.product_price,
           uid: product.uid,
-          manufacturer_name: product.manufacturer_name
+          manufacturer_name: product.manufacturer_name,
+          options: orderProductOptions.filter(opt => opt.op_id === product.id)
         })),
       manufacturerName: orderProducts.find(product => product.order_id === order.id)?.manufacturer_name || '未知廠商',
       companyName: order.company_name,
